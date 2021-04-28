@@ -1,0 +1,61 @@
+version: '3'
+services:
+  workstation:
+    container_name: workstation
+    image: riku2020/workstation:v2
+    hostname: workstation
+    stdin_open: true
+    privileged: true
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+    tty: true
+    links:
+      - lb
+      - web1
+      - web2
+      - server.com
+  lb:
+    container_name: lb
+    image: riku2020/target:v2
+    hostname: lb
+    stdin_open: true
+    privileged: true
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+    tty: true
+    ports:
+      - 8000:80
+  web1:
+    container_name: web1
+    image: riku2020/target:v2
+    hostname: web1
+    stdin_open: true
+    privileged: true
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+    tty: true
+    ports:
+      - 8001:80
+  web2:
+    container_name: web2
+    image: riku2020/target:v2
+    hostname: web2
+    stdin_open: true
+    privileged: true
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+    tty: true
+    ports:
+      - 8002:80
+  server.com:
+    container_name: server
+    image: riku2020/server:v2
+    hostname: server.com
+    stdin_open:  true
+    privileged: true
+    sysctls: 
+      - net.ipv6.conf.all.disable_ipv6=1
+    tty: true
+    ports: 
+      - 80:80
+      - 443:443
