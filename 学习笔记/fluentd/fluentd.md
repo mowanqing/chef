@@ -1432,3 +1432,362 @@ Fluentd配置文件支持占位符变量，这些变量会在运行中被替换�
   - retry_max_times：最大重试次数
   - retry_wait：重试等待时长
 
+## 第六章：使用Fluentd+MongoDB采集Apache日志
+
+我们之前介绍了EFK日志采集分析套件，今天再介绍一个组合：Fluentd+MongoDB，用以实时收集半结构化数据。
+
+### 背景知识
+
+日志接入Fluentd后，会以json的格式在Fluentd内部进行路由。这就决定了Fluentd处理日志的方式是非常灵活的，它将日志视为半结构化数据，可以方便地修改其结构。
+
+相应地，日志的最终存储数据库也应该擅长处理这样的半结构或者非结构化数据。这样整个系统搭配起来才更协调和高效。
+
+而MongoDB恰好也是以类json的方式来处理内部数据的，非常适合作为Fluentd的目标存储。
+
+### 实现机制
+
+我们通常以下列架构来组合Fluentd+MongoDB这对CP。
+
+![image-20210503203235678](https://i.loli.net/2021/05/03/x3UIHl27rRjmETk.png)
+
+在这个组合中，Fluentd的职责为：
+
+1. 持续“tail”Apache访问日志
+2. 将Apache日志文本解析为有意义的字段（如ip、path等），并缓存
+3. 定期将缓存的日志写入MongoDB
+
+### 安装部署
+
+1. 安装Apache、MongoDB
+2. 安装Fluentd
+3. 在Fluentd中安装MongoDB插件（最新版Fluentd已内置）
+
+```shell
+fluent-gem install fluent-plugin-mongo
+```
+
+### 配置说明
+
+1. 首先配置输入端
+
+```shell
+<source>
+  @type tail
+  path /var/log/apache2/access_log
+  pos_file /var/log/td-agent/apache2.access_log.pos
+  <parse>
+    @type apache2
+  </parse>
+  tag mongo.apache.access
+</source>
+```
+
+使用tail来追踪Apache的日志文件access_log，使用Fluentd内置的Apache日志解析器apache2来解析日志。日志事件tag为mongo.apache.access。
+
+2. 再配置输出端
+
+```shell
+<match mongo.**>
+  # plugin type
+  @type mongo
+
+  # mongodb db + collection
+  database apache
+  collection access
+
+  # mongodb host + port
+  host localhost
+  port 27017
+
+  # interval
+  <buffer>
+    flush_interval 10s
+  </buffer>
+
+  # make sure to include the time key
+  <inject>
+    time_key time
+  </inject>
+</match>
+```
+
+<match>匹配所有mongo开头的tag，使用out_mongo作为输出插件。依次配置日志存储在MongoDB中的数据库和集合、MongoDB地址和端口。设置flush间隔为10秒，每10秒将缓存的日志写入MongoDB。
+
+### 测试验证
+
+确保各服务正常运行。
+
+我们通过ping Apache来制造一些测试数据。
+
+```shell
+$ ab -n 100 -c 10 http://localhost/
+```
+
+然后，在MongoDB中就可以看到这些日志了。
+
+```shell
+
+$ mongo
+> use apache
+> db["access"].findOne();
+{ "_id" : ObjectId("4ed1ed3a340765ce73000001"), "host" : "127.0.0.1", "user" : "-", "method" : "GET", "path" : "/", "code" : "200", "size" : "44", "time" : ISODate("2011-11-27T07:56:27Z") }
+{ "_id" : ObjectId("4ed1ed3a340765ce73000002"), "host" : "127.0.0.1", "user" : "-", "method" : "GET", "path" : "/", "code" : "200", "size" : "44", "time" : ISODate("2011-11-27T07:56:34Z") }
+{ "_id" : ObjectId("4ed1ed3a340765ce73000003"), "host" : "127.0.0.1", "user" : "-", "method" : "GET", "path" : "/", "code" : "200", "size" : "44", "time" : ISODate("2011-11-27T07:56:34Z") }
+```
+
+## Fluentd部署：日志
+
+Fluentd是用来处理其他系统产生的日志的，它本身也会产生一些运行时日志。我们一起来了解一下Fluentd本身的日志机制。
+
+Fluentd包含两个日志层：全局日志和插件级日志。每个层次的日志都可以进行单独配置。
+
+### 日志级别
+
+Fluentd的日志包含6个级别：fatal、error、warn、info、debug和trace。级别依次递增，高级别的日志包含低级别的日志。默认为info，所以默认情况下，日志中包含info、warn、error、fatal这4个级别的日志。
+
+### 全局日志
+
+Fluentd内核使用全局日志配置，若插件没有单独设置自己的日志配置项，插件也共用全局日志配置项。可通过命令行或配置文件进行设置。
+
+1. 命令行
+
+   -v、-vv用于增加日志级别，-q、-qq用于降低日志级别。
+
+```shell
+$ fluentd -v  ... # debug level
+$ fluentd -vv ... # trace level
+```
+
+```shell
+$ fluentd -q  ... # warn level
+$ fluentd -qq ... # error leve
+```
+
+使用命令行可以在不改变配置文件的情况下调整日志级别，方便调试。
+
+2. 配置文件
+
+   也可以在配置文件中设置<system>的log_level来配置全局日志级别。
+
+```shell
+<system>
+  # equal to -qq option
+  log_level error
+</system>
+```
+
+3. 插件日志
+
+   可通过@log_level对每个插件单独设置日志级别，这个级别将覆盖全局日志级别。
+
+```shell
+<source>
+  @type tail
+  @log_level debug
+  path /var/log/data.log
+  ...
+</source>
+<source>
+  @type http
+  @log_level fatal
+</source>
+```
+
+上边这个片段中，我们对两个不同的输入源分别设置了各自的日志级别。
+
+4. 日志格式
+
+   如今天第一篇文章中所述，Fluentd的日志支持text和json两种格式，默认使用text，可在<system>中进行设定。
+
+```shell
+<system>
+  <log>
+    format json
+    time_format %Y-%m-%d
+  </log>
+</system>
+```
+
+若使用json格式，
+
+```shell
+2017-07-27 06:44:54 +0900 [info]: #0 fluentd worker is now running worker=0
+```
+
+这条日志将会转化为如下输出：
+
+```shell
+{"time":"2017-07-27","level":"info","message":"fluentd worker is now running worker=0","worker_id":0}
+```
+
+5. 将日志写入文件
+
+   Fluentd默认将其日志输出到stdout，可通过-o将日志输出到文件中。
+
+```shell
+$ fluentd -o /path/to/log_file
+```
+
+若将日志写入文件，默认情况下Fluentd不会进行日志轮转，即会向指定的文件中不断写入日志，这可能会导致日志文件过大。可通过命令行参数开启日志轮转功能。
+
+1. --log-rotate-age AGE
+
+   这里AGE为整数或字符串，需要和下边的rotate-size配合使用。
+
+   整数表示轮转文件个数；
+
+   字符串表示轮转频率，可为daily、weekly或monthly。
+
+2. -log-rotate-size BYTES
+
+   BYTES为轮转文件的大小，达到此字节数即开始写入新的文件。
+
+   当rotate-age值为整数时，通过此配置项控制日志的轮转。
+
+```shell
+$ fluentd -c fluent.conf --log-rotate-age 5 --log-rotate-size 104857600
+```
+
+6. 捕获Fluentd日志
+
+   Fluentd自身日志也可以被采集。
+
+   Fluentd使用fluent作为自身日志的tag，我们可以通过<label @FLUENT_LOG>来处理Fluentd自身的日志。
+
+```shell
+# Add hostname for identifying the server
+<label @FLUENT_LOG>
+  <filter fluent.*>
+    @type record_transformer
+    <record>
+      host "#{Socket.gethostname}"
+    </record>
+  </filter>
+
+  <match fluent.*>
+    @type monitoring_plugin
+    # parameters...
+  </match>
+<label>
+```
+
+这样做的一个用处是用来监控Fluentd运行情况。
+
+## Fluentd部署：高可用配置
+
+对于高访问量的web站点或者服务，我们可以采用Fluentd的高可用配置模式。
+
+### **消息分发语义**
+
+Fluentd设计初衷主要是用作事件日志分发系统的。这类系统支持几种不同的分发模式：
+
+1. 至多一次。消息被立即发送，若传输成功，该消息不会再被发送。发送失败，则会导致消息丢失。现实环境下会有很多情况导致发送失败，比如网络暂时不可用。
+2. 至少一次。消息至少会被发送一次，若发送失败，消息会被重发。这保证了消息不会被丢失，但可能导致接收端收到重复的消息。
+3. 精确只发一次。消息刚好发送一次，能确保送达且不会重复。这是大家所期望的分发模式。实现此模式可能需要采用同步化的日志处理方式，当达到发送瓶颈时，告知业务层已无法接收更多的日志。
+
+为了在不影响业务性能的情况下收集大量的日志，日志层必须以异步的方式运行。因此，Fluentd只提供了前两种传输模式。
+
+
+
+### **网络拓扑**
+
+为使得Fluentd具备高可用性，典型的部署架构需要包含两种不同角色的Fluentd模块：转发器（forwarder）和聚合器（aggregator）。其拓扑结构如下图所示
+
+![image-20210503204657122](https://i.loli.net/2021/05/03/UZyQJ3xhFi2PtGR.png)
+
+转发器部署在业务节点，用于收集业务方产生的本地日志事件，并将事件发送至聚合器。
+
+聚合器持续地从转发器接收日志，对日志进行缓存，并定期上传日志到下一个处理方（典型的就是存储）。
+
+聚合器采用主备模式。如上图，192.168.0.1为主，192.168.0.2为备。
+
+### **转发器配置**
+
+转发器的典型配置如下所示：
+
+```shell
+# TCP input
+<source>
+  @type forward
+  port 24224
+</source>
+
+# HTTP input
+<source>
+  @type http
+  port 8888
+</source>
+
+# Log Forwarding
+<match mytag.**>
+  @type forward
+
+  # primary host
+  <server>
+    host 192.168.0.1
+    port 24224
+  </server>
+  # use secondary host
+  <server>
+    host 192.168.0.2
+    port 24224
+    standby
+  </server>
+
+  # use longer flush_interval to reduce CPU usage.
+  # note that this is a trade-off against latency.
+  <buffer>
+    flush_interval 60s
+  </buffer>
+</match>
+```
+
+这里有两个输入源，使用forward插件将日志事件发送到两个聚合器server中，其中通过standby指定192.168.0.2为备用聚合器。若两个聚合器节点都不可用，日志将会缓存在转发器节点。
+
+### 聚合器配置
+
+聚合器的典型配置如下所示：
+
+```shell
+# Input
+<source>
+  @type forward
+  port 24224
+</source>
+
+# Output
+<match mytag.**>
+  ...
+</match>
+```
+
+这个比较简单，使用forward插件作为输入源。日志会在本地缓存，并通过重传机制确保能送达目的地。
+
+### 失败场景提示
+
+1. 转发失败
+
+   转发器收到应用层的日志事件后，先将事件写入本地磁盘缓存（由buffer_path指定）。每个flush_interval到来时，缓存事件被转发至聚合器。
+
+   转发器进程若发生崩溃，进程重启后会自动重发已缓存的日志；转发器和聚合器网络若发生故障，转发器也会对日志进行重传。这在一定程度上保证了转发器的健壮性。
+
+   但仍有一些情况可导致数据丢失：
+
+2. 1. 转发器收到业务层日志，在将日志写入缓存之前发生崩溃
+   2. 磁盘损坏
+
+3. 聚合失败
+
+   聚合器采用和转发器相同的失败处理机制，失败场景类似。
+
+### 错误排查
+
+采用此架构进行部署时，有时候会遇到“no nodes are available”的错误提示。这可能是节点间网络不通导致的。需要注意的是，节点之间通过24224端口传输数据，既使用TCP，也会使用UDP。
+
+可通过以下命令进行检查：
+
+```shell
+$ telnet host 24224
+$ nmap -p 24224 -sU host
+```
+

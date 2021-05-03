@@ -1591,3 +1591,254 @@ end
 
 ## 第十六章：测试
 
+在部署chef代码到生产环境之前执行测试和验证确保它能产生预期的结果。
+
+基础架构的改变最好是渐进式
+
+![image-20210503171636637](https://i.loli.net/2021/05/03/VuFwGmNbUOIcCEl.png)
+
+![image-20210503171739279](https://i.loli.net/2021/05/03/5Pw21WQSzyTBk8i.png)
+
+寻找和修复软件和基础架构代码中的问题是需要成本的，而且发现问题的时间越接近周期结束修复这些问题的成本就越高。
+
+- 需求
+- 设计
+- 开发
+- 开发测试
+- 整合测试
+- 生产环境
+
+![image-20210503171920124](https://i.loli.net/2021/05/03/6VN78z2EsWO4FQn.png)
+
+在做chef项目时应做到以下几点。
+
+1. 第一次就做对以免未来再修复问题。
+2. 越早发现问题越好，越接近写代码的时候就发现问题越好。
+3. 尽可能做渐进式的小改变，测试小的改变要容易很多。
+
+chef提供的测试工具在攥写菜谱时尽早对代码中的问题提供反馈
+
+![image-20210503172148435](https://i.loli.net/2021/05/03/DeudXg26aVcZAsU.png)
+
+- 编辑器中打入chef代码的时候
+  - 使用Foodcritic可以分析你的chef编程风格
+- 在部署到测试节点之前
+  - 使用ChefSpec可以帮助你保证代码的组织和文档符合标准
+- 在部署到测试节点后
+  - 使用Serverspec验证菜谱产生的行为与预期相符
+
+> 在自动化输出中，术语\_example_代表一个测试案例
+
+### 重温Apache菜谱
+
+生产一个apache-test菜谱
+
+```ruby
+chef generate cookbook apache-test
+cd apache-test
+
+# chef-repo/apache-test/recipes/default.rb
+
+package "httpd"
+service "httpd" do
+    action [:enable, :start ]
+end
+
+template "/var/www/html/index.html" do
+    source 'index.html.erb'
+    mode '0644'
+end
+
+# 创建一个ERB模板
+chef generate template index.html
+
+# 对index.html做一些改变
+This site was set up by <%= node['hostname'] %>
+
+# 如果标签中没有等号，它则作为脚本执行。
+<% for @interface in node['network']['interfaces'].keys %>
+	* <%= @interface %>
+<% end %>
+```
+
+在测试节点上有三个网络界面lo,eth0和eth1,ERB中的脚本将渲染以下输出：
+
+- lo
+- eth0
+- eth1
+
+```ruby
+# chef-repo/apache-test/templates/default/index.html.erb
+<html>
+<body>
+<pre><code>
+This site was set up by <%= node['hostname'] %>
+My network addresses are:
+<% node['network']['interfaces'].keys.each do |iface_name| %>
+  * <%= iface_name %>: 
+      <%= node['network']['interfaces'][iface_name]['addresses'].keys[1] %>
+<% end %>
+</code></pre>
+</body>
+</html>
+```
+
+### 使用Serverspec进行自动化测试
+
+默认情况下，Test kitchen会在test/integration子目录中寻找测试相关的文件。Serverspec在test/integration目录下的一些子目录中寻找它的测试文件。首先，在test/integration目录下需要针对每个测试套件的名字（suite name)有一个对应的测试目录。
+
+![image-20210503173912587](https://i.loli.net/2021/05/03/VMr97KklYd2uwOC.png)
+
+套件（suite）：
+
+​	默认是default，可以使用Test kitchen的套件功能对不同的运行清单和属性配置运行不同的自动化测试。
+
+
+
+需要为apache-test菜谱创建一个测试目录
+
+```shell
+mkdir -p test/integration/default
+```
+
+在test/integration/default目录下创建一个子目录来告诉Test Kitchen我们希望使用Serverspec目录下的目录结构中获取此信息。
+
+``` shell
+mkdir -p test/integration/default/serverspec
+```
+
+根据约定，Serverspec预期包含测试代码的文件以spec.rb结尾
+
+```ruby
+require 'spec_helper'  # 1
+
+set :os, :family => 'redhat', :release => 6  # 2
+set :backend, :exec
+
+describe 'web site' do  #3
+  it 'responds on port 80' do
+    expect(port 80).to be_listening 'tcp'
+  end
+
+  it 'returns eth1 in the HTML body' do
+    expect(command('curl localhost:80').stdout).to match /eth1/
+  end
+
+  it 'has the apache web server installed' do
+    expect(package 'httpd').to be_installed
+  end
+end
+```
+
+1. require语句用来加载serverspec的gem库，这样我们可以引用Serverspec的类和方法，比如set方法
+2. set语句让我们配置serverspec如何运行，在本例中，我们将：backend属性设定为：exec来告诉serverspec测试代码将会在同一台机器运行。
+3. 测试用RSpec DSL（领域专用语言)写，使用describe和it语句。在本例中，我们使用RSpec DSL写检查网站是否使用TCP协议监听80端口（HTTP网站默认端口）的测试。
+
+要运行这段代码，首先需要确保所有的gem文件在测试节点已经安装好，我们
+
+### RSpec DSL语法
+
+RSpec DSL使用describe代码块包含一组测试，每个describe代码块由以下格式定义：
+
+```ruby
+describe '<entity>' do  # entity是描述被测试的实体
+    <tests here>
+end
+```
+
+describe代码块的用途是**将测试根据意图分组并描述被测试的实体**。
+
+**每个分组的描述**作为**字符串**传递给describe
+
+这个**字符串描述**是给**运行测试的人**作为**文档**在**测试输出中查看**
+
+实际的测试代码在describe代码块里面的it代码块中定义，格式如下：
+
+```ruby
+describe '<entity>' do
+	it '<description>'
+    	<examples here>
+    end
+end
+```
+
+it 代码块也接受一个字符串参数来作为该具体测试的文档。
+
+比如，在示例16-4中，我们提供字符串‘responds on port 80’来说明我们的测试检查网站是否在80端口下运行：
+
+```ruby
+describe 'web site' do
+    it 'responds on port 80' do
+        ...
+     end
+end
+```
+
+测试应该以expect格式写。
+
+```ruby
+describe 'web site' do
+    it 'responds on port 80' do
+       	expect(资源).to 匹配器 匹配器参数
+     end
+end
+```
+
+- 资源（resource）,也称为主题（subject）或命令（command）,是expect代码块的第一个参数，它代表被测试的实体。诸如Serverspec和CHefSpec的测试框架提供特定的资源来执行广泛的验证。
+
+- 匹配器（matcher）用来定义对于资源的等同或相反的期待值。它的格式以expect（资源）.to来表示期待该资源等同于匹配器结果，以及以expect(资源).not_to表示期待该资源的结果相反于匹配器结果
+
+  ```ruby
+  describe 'web site' do
+      it 'responsponds on port 80' do
+          expect(port 80).to be_listening 'tcp'
+      end
+  end
+  ```
+
+  serverspec.org
+
+### Serverspec详解(p277)
+
+供多个测试文件共享的代码可以移到spec_helper.rb文件中。
+
+![image-20210503200346456](https://i.loli.net/2021/05/03/3n6cvqQKpT8HEYx.png)
+
+使用cookstyle来检查chef代码
+
+```shell
+cookstyle .
+```
+
+### ChefSpec
+
+```ruby
+describe '<recipe_name>' do
+    <perform in-memory chef run>
+    <example here>
+ end
+```
+
+```ruby
+# 测试apache-test::default菜谱
+require 'chefspec'
+
+describe 'apache::default' do
+    chef_run = ChefSpec::Runner.new.converge('apache-test::default')
+    <descriptions here>
+end
+```
+
+```ruby
+#展示chefspec检查chef代码，查看是否已经安装httpd程序包
+require 'chefspec'
+
+describe 'apache::default' do
+    chef_run = ChefSpec::Runner.new.converge('apache-test::default')
+   
+    it 'installs apache2' do
+         expect(chef_run).to install_package('httpd')
+	end
+end
+```
+
