@@ -2,7 +2,7 @@ version: '3'
 services:
   workstation:
     container_name: workstation
-    image: riku2020/workstation:v2
+    image: riku2020/workstation:v3
     hostname: workstation
     stdin_open: true
     privileged: true

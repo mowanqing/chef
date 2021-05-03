@@ -66,11 +66,7 @@ sudo yum install jenkins
 
 docker run  --privileged --name jenkins-server  -d  --hostname jenkins-server  -p 8080:8080 riku2020/jenkins:v1
 
-
-docker run --name jenkins-docker --rm --detach \
-  --privileged --network jenkins --network-alias docker \
-  --env DOCKER_TLS_CERTDIR=/certs \
-  --publish 2376:2376 docker:dind --storage-driver overlay2
+docker run  --privileged --name target  -d  --hostname target  -p 8080:8080 riku2020/target:v2
 ```
 
 官方方法：
@@ -82,3 +78,5 @@ sudo rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io.key
 sudo yum upgrade
 sudo yum install jenkins java-1.8.0-openjdk-devel
 sudo systemctl daemon-reload
+```
+
