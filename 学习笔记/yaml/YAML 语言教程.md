@@ -1,10 +1,6 @@
 # YAML 语言教程
 
-阮一峰
-
-YAML 是专门用来写配置文件的语言，非常简洁和强大，远比 JSON 格式方便。
-
-本文介绍 YAML 的语法，以 [JS-YAML](https://github.com/nodeca/js-yaml) 的实现为例。你可以去[在线 Demo](http://nodeca.github.io/js-yaml/) 验证下面的例子。
+[toc]
 
 ## 一、简介
 
