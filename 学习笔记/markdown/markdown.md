@@ -182,7 +182,9 @@ And then define the link:
 ![Alt text](/path/to/img.jpg "Optional title")
 ```
 
-**效果图：**![img](https://raw.githubusercontent.com/mowanqing/img/main/img/v2-23c14209922e3f4d2d18bce89a256171_720w.jpg)
+**效果图：**
+
+![img](https://raw.githubusercontent.com/mowanqing/img/main/img/v2-23c14209922e3f4d2d18bce89a256171_720w.jpg)
 
 ## 14. 强调
 
@@ -241,11 +243,9 @@ Use the `printf()` function.
 
 **效果图：**
 
-<video src="https://upos-hz-mirrorakam.akamaized.net/upgcxcode/56/34/282453456/282453456-1-208.mp4?e=ig8euxZM2rNcNbRj7zdVhwdlhWTahwdVhoNvNC8BqJIzNbfq9rVEuxTEnE8L5F6VnEsSTx0vkX8fqJeYTj_lta53NCM=&uipk=5&nbs=1&deadline=1620117394&gen=playurlv2&os=akam&oi=2667038008&trid=22a949ae16e948a0922998766963ebebT&platform=html5&upsig=44e065d3e6eaa4c41ba72431e9e727e1&uparams=e,uipk,nbs,deadline,gen,os,oi,trid,platform&hdnts=exp=1620117394~hmac=3e38aae04f1fd621da5c62c20880d33b974fa56e74ec3e9eba9e05f5c39f6981&mid=580104086&orderid=0,1&logo=80000000">
+<iframe src="https://player.bilibili.com/player.html?aid=928689451&bvid=BV1TT4y1K72w&cid=282453456&page=1" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true" height="350px"> </iframe>
 
 ```markdown
-<video src="https://upos-hz-mirrorakam.akamaized.net/upgcxcode/56/34/282453456/282453456-1-208.mp4?e=ig8euxZM2rNcNbRj7zdVhwdlhWTahwdVhoNvNC8BqJIzNbfq9rVEuxTEnE8L5F6VnEsSTx0vkX8fqJeYTj_lta53NCM=&uipk=5&nbs=1&deadline=1620117394&gen=playurlv2&os=akam&oi=2667038008&trid=22a949ae16e948a0922998766963ebebT&platform=html5&upsig=44e065d3e6eaa4c41ba72431e9e727e1&uparams=e,uipk,nbs,deadline,gen,os,oi,trid,platform&hdnts=exp=1620117394~hmac=3e38aae04f1fd621da5c62c20880d33b974fa56e74ec3e9eba9e05f5c39f6981&mid=580104086&orderid=0,1&logo=80000000">
+<video src="https://upos-sz-mirrorcos.bilivideo.com/upgcxcode/56/34/282453456/282453456-1-208.mp4?e=ig8euxZM2rNcNbRj7zdVhwdlhWTahwdVhoNvNC8BqJIzNbfq9rVEuxTEnE8L5F6VnEsSTx0vkX8fqJeYTj_lta53NCM=&uipk=5&nbs=1&deadline=1620127025&gen=playurlv2&os=cosbv&oi=3662552617&trid=feb4ab2297404c9bad3ed63a9bdaa105T&platform=html5&upsig=f150f0cd8986bc55a0ac937bd006ae99&uparams=e,uipk,nbs,deadline,gen,os,oi,trid,platform&mid=580104086&orderid=0,1&logo=80000000">
 ```
-
-
 

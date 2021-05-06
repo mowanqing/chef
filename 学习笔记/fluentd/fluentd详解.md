@@ -1,7 +1,9 @@
-## fluentd详解
+# Fluentd详解
+
+## conf配置解释
 
 [toc]
-### 配置文件的语法
+### 1. 配置文件的语法
 
 配置文件位置：
 
@@ -24,7 +26,7 @@
 6. @include
    - 包括其他文件
 
-### source：这些数据从何而来
+### 2. source：这些数据从何而来
 
 通过使用源指令选择和配置所需的输入插件，可以启用Fluentd输入源。
 
@@ -53,7 +55,7 @@ Fluentd标准输入插件包括**http**和**forward**。
 
 每个source指令必须包含一个@type参数来指定要使用的输入插件。
 
-### Routing
+### 3. Routing
 
 source将事件提交给Fluentd路由引擎。
 
@@ -75,7 +77,7 @@ time: (current time)
 record: {"event":"data"}
 ```
 
-### match:告诉fluentd要做什么!
+### 4. match:告诉fluentd要做什么!
 
 **match**指令查找带有匹配**tags**的事件并处理它们。match指令最常见的用法是将事件输出到其他系统。由于这个原因，与match指令对应的插件被称为**输出插件**。Fluentd标准输出插件包括**file**和**forward**。让我们将这些添加到配置文件中。
 
@@ -105,7 +107,7 @@ record: {"event":"data"}
 
 每个**match**指令必须包含一个匹配模式和一个@type参数。只有带有与模式匹配的**tag**事件才会被发送到输出目的地(在上面的示例中，只有带有标记**myapp.access**的事件才会匹配。**@type**参数指定要使用的输出插件。
 
-### filter:事件处理管道
+### 5. filter:事件处理管道
 
 **filter**指令具有与match相同的语法，但是filter可以被链接用于处理管道。使用**filters**，事件流是这样的:
 
@@ -113,9 +115,436 @@ record: {"event":"data"}
 Input -> filter 1 -> ... -> filter N -> Output
 ```
 
+添加标准record_transformer过滤器来match示例。
 
+```shell
+# http://this.host:9880/myapp.access?json={"event":"data"}
+<source>
+  @type http
+  port 9880
+</source>
 
+<filter myapp.access>
+  @type record_transformer
+  <record>
+    host_param "#{Socket.gethostname}"
+  </record>
+</filter>
 
+<match myapp.access>
+  @type file
+  path /var/log/fluent/access
+</match>
+```
 
+ [Visualizaion可视化：](https://link.calyptia.com/6mk)
 
+![image-20210505153634314](https://gitee.com/chobits01/xiaoming/raw/master/img/image-20210505153634314.png)接收到的事件**{"event":"data"}**首先转到**record_transformer**过滤器。record_transformer过滤器将**host_param字段**添加到事件;
+
+然后过滤事件**{"event":"data"，"host_param":"webserver1"}**转到**file**输出插件。
+
+### 6. 设置系统范围的配置:system指令
+
+系统范围的配置是由**system**指令设置的。它们中的大多数也可以通过命令行选项获得。例如，有以下配置:
+
+- log_level
+- suppress_repeated_stacktrace
+- emit_error_log_interval
+- suppress_config_dump
+- without_source
+- process_name（仅在系统指令中可用。没有fluentd选择）
+
+例如：
+
+```shell
+<system>
+  # equal to -qq option
+  log_level error
+  # equal to --without-source option
+  without_source
+  # ...
+</system>
+```
+
+具体设置参考：
+
+<center><a href="https://docs.fluentd.org/deployment/system-config">System Configuration</a></center>
+
+**process_name:**
+
+如果设置此参数，fluentd的supervisor和worker进程名称将被更改。
+
+```shell
+<system>
+  process_name fluentd1
+</system>
+```
+
+通过配置，ps命令显示如下结果:
+
+```shell
+% ps aux | grep fluentd1
+foo      45673   0.4  0.2  2523252  38620 s001  S+    7:04AM   0:00.44 worker:fluentd1
+foo      45647   0.0  0.1  2481260  23700 s001  S+    7:04AM   0:00.40 supervisor:fluentd1
+```
+
+### 7. filter和output形成的组：label指令
+
+**label** 指令组过滤并输出内部路由。**label** 降低了tag处理的复杂性。
+
+**label**参数是一个内置插件参数，所以需要@前缀。
+
+下面是一个配置示例:
+
+```shell
+<source>
+  @type forward
+</source>
+
+<source>
+  @type tail
+  @label @SYSTEM
+</source>
+
+<filter access.**>
+  @type record_transformer
+  <record>
+    # ...
+  </record>
+</filter>
+<match **>
+  @type elasticsearch
+  # ...
+</match>
+
+<label @SYSTEM>
+  <filter var.log.middleware.**>
+    @type grep
+    # ...
+  </filter>
+  <match **>
+    @type s3
+    # ...
+  </match>
+</label>
+```
+
+![image-20210505153442440](https://gitee.com/chobits01/xiaoming/raw/master/img/image-20210505153442440.png)
+
+在此配置中，forward事件被路由到record_transformer  filter 然后到 elasticsearch输出，in_tail事件被路由到@SYSTEM label内的grep filter 然后到 s3输出。
+
+label参数对于没有标记前缀的事件流分离非常有用。
+
+**@ERROR标签**
+
+@ERROR标签是一个内置标签，用于插件的emit_error_event API发出的错误记录。
+
+如果设置了<label @ERROR>，当相关错误被触发时(例如缓冲区已满或记录无效)，事件将被路由到这个标签。
+
+### 8. 重用你的配置:@include指令
+
+单独的配置文件中的指令可以使用@include指令导入
+
+```shell
+# Include config files in the ./config.d directory
+@include config.d/*.conf
+```
+
+@include指令支持常规**文件路径**、**glob模式**和**http URL**约定:
+
+```shell
+# absolute path
+@include /path/to/config.conf
+
+# if using a relative path, the directive will use
+# the dirname of this config file to expand the path
+@include extra.conf
+
+# glob match pattern
+@include config.d/*.conf
+
+# http
+@include http://example.com/fluent.conf
+```
+
+注意，对于glob模式，文件是按字母顺序展开的。如果有a.conf和b.conf，那么fluentd首先解析a.conf。但是，你不应该写依赖于这个顺序的配置。它是如此容易出错，因此，为了安全起见，使用多个独立的@include指令。
+
+```shell
+# If you have a.conf, b.conf, ..., z.conf and a.conf / z.conf are important
+
+# This is bad
+@include *.conf
+
+# This is good
+@include a.conf
+@include config.d/*.conf
+@include z.conf
+```
+
+#### 共享相同的参数
+
+@include指令可以在section下使用，以共享相同的参数:
+
+```shell
+# config file
+<match pattern>
+  @type forward
+  # ...
+  <buffer>
+    @type file
+    path /path/to/buffer/forward
+    @include /path/to/out_buf_params.conf
+  </buffer>
+</match>
+
+<match pattern>
+  @type elasticsearch
+  # ...
+  <buffer>
+    @type file
+    path /path/to/buffer/es
+    @include /path/to/out_buf_params.conf
+  </buffer>
+</match>
+
+# /path/to/out_buf_params.conf
+flush_interval    5s
+total_limit_size  100m
+chunk_limit_size  1m
+```
+
+### 10. 匹配模式是如何工作的?
+
+如上所述，Fluentd允许根据事件的标记路由事件。虽然您可以指定要匹配的确切标记(如<filter app.log>)，但您可以使用许多技术来更有效地管理数据流。
+
+#### 通配符、扩展和其他提示
+
+下面的匹配模式可以用于<match>和<filter>标签:
+
+- *匹配单个标记部分。
+  - 例如，模式a.*匹配a.b，但不匹配a或a.b.c
+
+- **匹配零个或多个标记部分。
+  - 例如，模式a.**匹配a, a.b, a.b.c
+
+- {X,Y,Z}匹配X,Y或Z，其中X,Y和Z是匹配模式。
+  - 例如，模式{a,b}匹配a和b，但不匹配c
+  - 这可以与*或**模式结合使用。例子:包括a.{b,c}.\* 和a.{b,c.\*\*}
+- /regular expression/用于复杂模式
+  - 例如，模式 `/(?!a\.).*` 匹配非a.开头的标签,比如b.xxx
+  - 从fluentd v1.11.2开始就支持该特性
+- \#{…}以Ruby表达式的形式计算括号内的字符串。(参见下面嵌入Ruby表达式一节)。
+- 当多个模式被列在单个**tag** (由一个或多个空白分隔)内时，它将匹配所列的任何模式。例如:
+  - 模式<match a b>匹配a和b。
+  - <match a.\**  b.*> match a, a.b, a.b.c(第一个模式)和b.d(第二个模式)
+
+### 11. 注意匹配顺序
+
+Fluentd试图按照标记在配置文件中出现的顺序匹配它们。所以，如果你有以下配置:
+
+```shell
+# ** matches all tags. Bad :(
+<match **>
+  @type blackhole_plugin
+</match>
+
+<match myapp.access>
+  @type file
+  path /var/log/fluent/access
+</match>
+```
+
+然后myapp.access从不匹配。更广泛的匹配模式应该定义再严格匹配之后。
+
+```shell
+<match myapp.access>
+  @type file
+  path /var/log/fluent/access
+</match>
+
+# Capture all unmatched tags. Good :)
+<match **>
+  @type blackhole_plugin
+</match>
+```
+
+当然，如果您使用两个相同的模式，第二个匹配将永远不会被匹配。如果你想把事件发送到多个输出，考虑out_copy插件。
+
+常见的陷阱是当你在<match>后面放一个<filter>块时。由于上述原因，它永远不会工作，因为事件永远不会通过过滤器。
+
+```shell
+# You should NOT put this <filter> block after the <match> block below.
+# If you do, Fluentd will just emit events without applying the filter.
+
+<filter myapp.access>
+  @type record_transformer
+  ...
+</filter>
+
+<match myapp.access>
+  @type file
+  path /var/log/fluent/access
+</match>
+```
+
+### 12. 嵌入Ruby表达式
+
+由于Fluentd v1.4.0，您可以使用#{…}来将任意的Ruby代码嵌入匹配模式中。下面是一个例子:
+
+```ruby
+<match "app.#{ENV['FLUENTD_TAG']}">
+  @type stdout
+</match>
+```
+
+如果将环境变量FLUENTD_TAG设置为dev，则计算结果为app.dev。
+
+### 13. Values的支持数据类型
+
+每个Fluentd插件都有自己特定的参数集。例如，in_tail有**rotate_wait**和**pos_file**等参数。每个参数都有一个与之相关联的特定类型。类型定义如下:
+
+- 字符串:该字段被解析为一个字符串。这是最通用的类型，每个插件决定如何处理字符串。
+
+  - 字符串有三个字面值:不带引号的一行字符串，`'`单引号字符串和`“`双引号字符串。
+
+- Integer:解析为整数。
+
+- float:字段被解析为浮点型。
+
+- Size:该字段被解析为字节数。有几个符号的变化:
+
+  ```shell
+  <INTEGER>k or <INTEGER>K: number of kilobytes
+  <INTEGER>m or <INTEGER>M: number of megabytes
+  <INTEGER>g or <INTEGER>G: number of gigabytes
+  <INTEGER>t or <INTEGER>T: number of terabytes
+  # 否则，该字段被解析为整数，该整数是字节数。
+  ```
+
+- Time:该字段被解析为一个时间持续时间。
+
+```shell
+<INTEGER>s: seconds
+<INTEGER>m: minutes
+<INTEGER>h: hours
+<INTEGER>d: days
+# 否则，该字段被解析为float，该float是秒数。此选项用于指定次秒持续时间，如0.1(0.1秒= 100毫秒)。
+```
+
+- array:该字段被解析为JSON数组。它还支持速记语法。这些是相同的值:
+
+```shell
+normal: ["key1", "key2"]
+shorthand: key1,key2
+```
+
+- hash:该字段被解析为一个JSON对象。它还支持速记语法。这些是相同的值:
+
+```shell
+normal: {"key1": "value1", "key2": "value2"}
+shorthand: key1:value1,key2:value2
+```
+
+**array**和**hash**类型是JSON，因为几乎所有编程语言和基础设施工具都可以轻松生成JSON值，而不是其他任何不寻常的格式。
+
+### 14. 常见的插件参数
+
+这些参数被保留，并以@符号作为前缀:
+
+- @type:插件类型
+
+- @id:插件id. `In_monitor_agent`将此值用于plugin_id领域
+
+- @label:标签符号。
+- @log_level:每个插件的日志级别
+
+### 15. 检查配置文件
+
+配置文件可以在不启动插件的情况下使用——dry-run选项进行验证:
+
+```shell
+fluentd --dry-run -c fluent.conf
+```
+
+### 16. 介绍配置文件的一些有用特性。
+
+多行支持“引用字符串、数组和散列值”
+
+```shell
+str_param "foo  # Converts to "foo\nbar". NL is kept in the parameter
+bar"
+array_param [
+  "a", "b"
+]
+hash_param {
+  "k": "v",
+  "k1": 10
+}
+```
+
+fluentd假定\[或\{开头的为数组或哈希，因此，如果想设置\[或\{开头,但不是json的格式，请使用`'`,`“`.
+
+比如：
+
+**mail plugin**
+
+```shell
+<match **>
+  @type mail
+  subject "[CRITICAL] foo's alert system"
+</match>
+```
+
+**map plugin**
+
+```shell
+<match tag>
+  @type map
+  map '[["code." + tag, time, { "code" => record["code"].to_i}], ["time." + tag, time, { "time" => record["time"].to_i}]]'
+  multi true
+</match>
+```
+
+这个限制将随着配置解析器的改进而消除。
+
+**嵌入Ruby代码**
+
+你可以用"引号字符串"中的#{}来计算Ruby代码。这对于设置机器信息很有用，例如主机名。
+
+```shell
+host_param  "#{Socket.gethostname}" # host_param is actual hostname like `webserver1`.
+env_param   "foo-#{ENV["FOO_BAR"]}" # NOTE that foo-"#{ENV["FOO_BAR"]}" doesn't work.
+```
+
+从v1.1.0开始，主机名和worker_id快捷方式可用:
+
+```shell
+host_param  "#{hostname}"  # This is same with Socket.gethostname
+@id         "out_foo#{worker_id}" # This is same with ENV["SERVERENGINE_WORKER_ID"]
+```
+
+worker_id快捷方式在多个worker下是有用的。例如，对于单独的插件id，添加worker_id来存储s3中的路径，以避免文件冲突。
+
+从1.8.0版本开始，helper方法use_nil和use_default是可用的:
+
+```shell
+some_param  "#{ENV["FOOBAR"] || use_nil}"     # Replace with nil if ENV["FOOBAR"] isn't set
+some_param  "#{ENV["FOOBAR"] || use_default}" # Replace with the default value if ENV["FOOBAR"] isn't set
+```
+
+注意，这些方法不仅会将内嵌的Ruby代码替换掉，还会将整个字符串替换为nil或默认值。
+
+```shell
+some_path   "#{use_nil}/some/path" # some_path is nil, not "/some/path"
+```
+
+config-xxx mixins使用“${}”，而不是“#{}”。这些嵌入式配置是两个不同的东西。
+
+**在双引号字符串字面量中，\是转义字符**
+
+正斜杠\被解释为转义字符。你需要“设置”,“r”,“n”,“t”或一些双引号字符串字面量中的字符。
+
+```shell
+str_param   "foo\nbar" # \n is interpreted as actual LF character
+```
 

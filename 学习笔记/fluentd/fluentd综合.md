@@ -1,4 +1,4 @@
-# fluentd
+# Fluentd
 
 ## 第一章：fluentd安装方法
 
@@ -80,7 +80,7 @@ $ curl -L https://toolbelt.treasuredata.com/sh/install-redhat-td-agent3.sh | sh
 
 执行此脚本将自动在计算机上安装 td-agent。这个 shell 脚本在/etc/yum.repos.d/td.repo 注册一个新的 rpm 存储库，并安装 td-agent。
 
-我们在脚本中使用 $releasever 作为存储库路径，而 $releasever 应该是主要版本，如“7”。如果您的环境使用其他格式，比如“7.2”，那么仅将其更改为主版本，或者手动设置 TD 存储库。
+我们在脚本中使用 releasever作为存储库路径，而releasever 应该是主要版本，如“7”。如果您的环境使用其他格式，比如“7.2”，那么仅将其更改为主版本，或者手动设置 TD 存储库。
 
 ### 第二步: 启动守护进程
 

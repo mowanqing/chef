@@ -1,3 +1,7 @@
+# Chef基础
+
+[toc]
+
 ## 启动容器
 
 ```shell
@@ -14,7 +18,7 @@ git config --global user.name "xiaoming"
 
 
 
-## jchef语法和案例
+## chef语法和案例
 
 chef使用的领域专用语言（DSL）是ruby的一个子集。
 
@@ -203,8 +207,6 @@ user
 #创建或管理本地用户账户：
 #创建bacon用户
 user 'bacon'
-
-
 ```
 
 ### 第一个chef配方单
@@ -236,7 +238,7 @@ file "#{ENV['HOME']}/stone.txt" do
 end
 ```
 
- #### chef概念
+ ### chef概念
 
 配方单（recipe）
 
@@ -594,7 +596,7 @@ node.default["apache"]["dir"] = "/etc/apache2"
 
 ### 创建一个motd-attributes菜谱
 
-#### 和服务器交互方法
+### 和服务器交互方法
 
 ```shell
 #添加一个node
@@ -725,7 +727,7 @@ pp node.debug_value('motd-attributes','company')
 
 ![image-20210502144816001](https://i.loli.net/2021/05/02/mJGWVvZx7MP5lwa.png)
 
-## 第久章：用chef服务器同时管理多个节点
+## 第九章：用chef服务器同时管理多个节点
 
 服务器功能：
 
@@ -836,7 +838,7 @@ chef solo 配置chef服务器的步骤概览
 
 ![image-20210502155058298](https://i.loli.net/2021/05/02/iOI2rN7XHvTadoe.png)
 
-## 社区以及chef-client菜谱
+### 社区以及chef-client菜谱
 
 chef-client与chef-server通信方法：
 
