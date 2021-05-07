@@ -74,7 +74,7 @@ $ less /var/log/td-agent/td-agent.log
 "ident":"sudo","message":"pam_unix(sudo:session): session opened for user root by admin(uid=0)"}
 ```
 
-出于安全原因，有必要了解哪个用户使用sudo执行了什么。为此，我们需要解析消息字段。换句话说，我们需要从sudo中提取syslog消息并以不同的方式处理它们。
+出于安全原因，有必要了解哪个用户使用sudo执行了什么。为此，：我们需要解析消息字段。换句话说，我们需要从sudo中提取syslog消息并以不同的方式处理它们。
 
 为此，我们可以使用grep过滤器插件。它检查事件的字段，并基于正则表达式模式对它们进行筛选。在下面的示例中，Fluentd过滤出来自sudo并包含命令数据的事件:
 
@@ -157,6 +157,42 @@ $ sudo cat /var/log/auth.log
 
 ```shell
 2018-09-27 16:00:01.000000000 +0900 system.authpriv.notice: {"sudoer":"root","command":"/bin/cat"}
+```
+
+### 补充
+
+#### 设置sudo的日志
+
+1. 编辑/etc/rsyslog.conf
+
+```shell
+local2.debug                           /var/log/sudo.log
+```
+
+2. 编辑visudo
+
+```shell
+Defaults logfile=/var/log/sudo.log
+Defaults loglinelen=0
+Defaults !syslog
+```
+
+3. 创建日志文件
+
+```shell
+touch /var/log/sudo.log
+systemctl restart rsyslog
+su - riku
+sudo cd /root/
+sudo cat /etc/passwd
+```
+4. 查看日志
+
+```shell
+# /var/log/sudo.log
+May  5 20:44:56 : riku : user NOT in sudoers ; TTY=pts/0 ; PWD=/home/riku ; USER=root ; COMMAND=/bin/cd /root/
+May  5 20:47:25 : riku : TTY=pts/0 ; PWD=/home/riku ; USER=root ; COMMAND=/bin/cd /root
+May  5 20:47:43 : riku : TTY=pts/0 ; PWD=/home/riku ; USER=root ; COMMAND=/bin/cat /etc/passwd
 ```
 
 ### 结论
